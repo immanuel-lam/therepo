@@ -37,9 +37,12 @@ export default function VMCard({ userName }: VMCardProps) {
     setLoading(false)
   }
 
-  async function handleStart() {
-    await action(state === 'suspended' ? 'resume' : 'start')
-    setScreenshotTs(Date.now())
+  async function handleSuspend() {
+    setLoading(true)
+    setScreenshotTs(Date.now()) // capture screenshot before suspending
+    await fetch('/api/vm/suspend', { method: 'POST' })
+    await fetchStatus()
+    setLoading(false)
   }
 
   const statusColor =
@@ -105,26 +108,37 @@ export default function VMCard({ userName }: VMCardProps) {
               {(state === 'suspended') && btn('Resume', 'resume', 'bg-zinc-900 text-white hover:bg-zinc-700')}
               {(state === 'paused') && btn('Resume', 'resume', 'bg-zinc-900 text-white hover:bg-zinc-700')}
               {(state === 'running') && btn('Restart', 'restart', 'border border-zinc-200 text-zinc-700 hover:bg-zinc-50')}
-              {(state === 'running') && btn('Suspend', 'suspend', 'border border-zinc-200 text-zinc-700 hover:bg-zinc-50')}
+              {state === 'running' && (
+                <button
+                  onClick={handleSuspend}
+                  disabled={loading}
+                  className="rounded-lg px-4 py-2 text-sm font-medium border border-zinc-200 text-zinc-700 hover:bg-zinc-50 disabled:opacity-40 transition"
+                >
+                  Suspend
+                </button>
+              )}
               {(state === 'running') && btn('Pause', 'pause', 'border border-zinc-200 text-zinc-700 hover:bg-zinc-50')}
               {(state === 'running') && btn('Stop', 'stop', 'border border-zinc-200 text-zinc-700 hover:bg-zinc-50')}
               {(state === 'running') && btn('Force Stop', 'kill', 'border border-red-200 text-red-600 hover:bg-red-50', 'Force shutdown will cut power to the VM. Continue?')}
-              {(state === 'running') && btn('Reset', 'reset', 'border border-red-200 text-red-600 hover:bg-red-50', 'This will hard reset the VM. Continue?')}
             </div>
           </div>
         </div>
 
         {/* Screenshot */}
-        {state === 'running' && (
+        {(state === 'running' || state === 'suspended') && (
           <div className="rounded-xl border border-zinc-200 bg-white overflow-hidden">
             <div className="border-b border-zinc-100 px-6 py-3 flex items-center justify-between">
-              <span className="text-xs font-medium text-zinc-500 uppercase tracking-wider">Live Preview</span>
-              <button
-                onClick={() => setScreenshotTs(Date.now())}
-                className="text-xs text-zinc-400 hover:text-zinc-600 transition"
-              >
-                Refresh
-              </button>
+              <span className="text-xs font-medium text-zinc-500 uppercase tracking-wider">
+                {state === 'suspended' ? 'Last Screenshot' : 'Live Preview'}
+              </span>
+              {state === 'running' && (
+                <button
+                  onClick={() => setScreenshotTs(Date.now())}
+                  className="text-xs text-zinc-400 hover:text-zinc-600 transition"
+                >
+                  Refresh
+                </button>
+              )}
             </div>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
