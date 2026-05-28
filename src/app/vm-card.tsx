@@ -3,12 +3,14 @@
 import { useState, useEffect, useCallback } from 'react'
 import { signOut } from 'next-auth/react'
 
+type VMState = 'running' | 'stopped' | 'suspended' | 'paused' | 'unknown' | null
+
 interface VMCardProps {
   userName: string | null | undefined
 }
 
 export default function VMCard({ userName }: VMCardProps) {
-  const [running, setRunning] = useState<boolean | null>(null)
+  const [state, setState] = useState<VMState>(null)
   const [loading, setLoading] = useState(false)
   const [screenshotTs, setScreenshotTs] = useState(Date.now())
 
@@ -16,7 +18,7 @@ export default function VMCard({ userName }: VMCardProps) {
     try {
       const res = await fetch('/api/vm/status')
       const data = await res.json()
-      setRunning(data.running)
+      setState(data.state ?? (data.running ? 'running' : 'stopped'))
     } catch {
       // silently ignore, keep last known state
     }
@@ -28,31 +30,44 @@ export default function VMCard({ userName }: VMCardProps) {
     return () => clearInterval(interval)
   }, [fetchStatus])
 
+  async function action(endpoint: string) {
+    setLoading(true)
+    await fetch(`/api/vm/${endpoint}`, { method: 'POST' })
+    await fetchStatus()
+    setLoading(false)
+  }
+
   async function handleStart() {
-    setLoading(true)
-    await fetch('/api/vm/start', { method: 'POST' })
-    await fetchStatus()
+    await action(state === 'suspended' ? 'resume' : 'start')
     setScreenshotTs(Date.now())
-    setLoading(false)
   }
 
-  async function handleStop() {
-    setLoading(true)
-    await fetch('/api/vm/stop', { method: 'POST' })
-    await fetchStatus()
-    setLoading(false)
-  }
+  const statusColor =
+    state === 'running' ? 'bg-green-400' :
+    state === 'paused' ? 'bg-yellow-400' :
+    state === 'suspended' ? 'bg-blue-400' :
+    'bg-zinc-300'
 
-  async function handleKill() {
-    if (!confirm('Force shutdown will cut power to the VM. Continue?')) return
-    setLoading(true)
-    await fetch('/api/vm/kill', { method: 'POST' })
-    await fetchStatus()
-    setLoading(false)
-  }
+  const statusText =
+    state === null ? 'Checking…' :
+    state === 'running' ? 'Running' :
+    state === 'stopped' ? 'Stopped' :
+    state === 'suspended' ? 'Suspended' :
+    state === 'paused' ? 'Paused' :
+    'Unknown'
 
-  const statusColor = running === null ? 'bg-zinc-300' : running ? 'bg-green-400' : 'bg-zinc-300'
-  const statusText = running === null ? 'Checking…' : running ? 'Running' : 'Stopped'
+  const btn = (label: string, endpoint: string, style: string, confirm?: string) => (
+    <button
+      onClick={async () => {
+        if (confirm && !window.confirm(confirm)) return
+        await action(endpoint)
+      }}
+      disabled={loading}
+      className={`rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-40 transition ${style}`}
+    >
+      {label}
+    </button>
+  )
 
   return (
     <div className="min-h-screen bg-zinc-50 flex flex-col">
@@ -85,40 +100,22 @@ export default function VMCard({ userName }: VMCardProps) {
               </div>
             </div>
 
-            <div className="flex gap-2">
-              {running === false && (
-                <button
-                  onClick={handleStart}
-                  disabled={loading}
-                  className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 disabled:opacity-40 transition"
-                >
-                  Start
-                </button>
-              )}
-              {running === true && (
-                <>
-                  <button
-                    onClick={handleStop}
-                    disabled={loading}
-                    className="rounded-lg border border-zinc-200 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-40 transition"
-                  >
-                    Stop
-                  </button>
-                  <button
-                    onClick={handleKill}
-                    disabled={loading}
-                    className="rounded-lg border border-red-200 px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-40 transition"
-                  >
-                    Force Stop
-                  </button>
-                </>
-              )}
+            <div className="flex flex-wrap gap-2 justify-end">
+              {(state === 'stopped') && btn('Start', 'start', 'bg-zinc-900 text-white hover:bg-zinc-700')}
+              {(state === 'suspended') && btn('Resume', 'resume', 'bg-zinc-900 text-white hover:bg-zinc-700')}
+              {(state === 'paused') && btn('Resume', 'resume', 'bg-zinc-900 text-white hover:bg-zinc-700')}
+              {(state === 'running') && btn('Restart', 'restart', 'border border-zinc-200 text-zinc-700 hover:bg-zinc-50')}
+              {(state === 'running') && btn('Suspend', 'suspend', 'border border-zinc-200 text-zinc-700 hover:bg-zinc-50')}
+              {(state === 'running') && btn('Pause', 'pause', 'border border-zinc-200 text-zinc-700 hover:bg-zinc-50')}
+              {(state === 'running') && btn('Stop', 'stop', 'border border-zinc-200 text-zinc-700 hover:bg-zinc-50')}
+              {(state === 'running') && btn('Force Stop', 'kill', 'border border-red-200 text-red-600 hover:bg-red-50', 'Force shutdown will cut power to the VM. Continue?')}
+              {(state === 'running') && btn('Reset', 'reset', 'border border-red-200 text-red-600 hover:bg-red-50', 'This will hard reset the VM. Continue?')}
             </div>
           </div>
         </div>
 
         {/* Screenshot */}
-        {running && (
+        {state === 'running' && (
           <div className="rounded-xl border border-zinc-200 bg-white overflow-hidden">
             <div className="border-b border-zinc-100 px-6 py-3 flex items-center justify-between">
               <span className="text-xs font-medium text-zinc-500 uppercase tracking-wider">Live Preview</span>
